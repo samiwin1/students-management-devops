@@ -1,4 +1,4 @@
-FROM openjdk:17
+FROM openjdk:17-jdk-slim
 EXPOSE 8089
-ADD target/gestion-station-ski-1.0.jar GestionStationSki.jar
-ENTRYPOINT ["java", "-jar" ,  "GestionStationSki.jar"]
+COPY target/gestion-station-ski-1.0.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
