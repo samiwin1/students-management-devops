@@ -1,102 +1,63 @@
 pipeline {
     agent any
-  
-    stages {
-        stage('Git') {
-           steps {
-        script {
-            git credentialsId: 'github-credentials', branch: 'BendhiefLeila', url: 'https://github.com/Medazizboughanmi31/GestionSkiDevops.git'
-        }
+
+    environment {
+        DOCKER_IMAGE = "samiwin1/students-management:latest"
+        DOCKER_CREDS = "samiwin-dockerhub"
     }
+
+    stages {
+
+        stage('Checkout GitHub') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-token',
+                    url: 'https://github.com/samiwin1/students-management-devops.git'
+            }
         }
 
-        stage('Build with Maven') {
+        stage('Build Spring Boot') {
             steps {
-                sh 'mvn clean install '
+                sh 'mvn clean package -DskipTests'
             }
         }
-        
-        stage('Run Tests') {
+
+        stage('Docker Build') {
             steps {
-                // Run tests with Maven (JUnit and Mockito)
-                sh 'mvn test'
+                sh 'docker build -t $DOCKER_IMAGE .'
             }
         }
-        
-         stage(' Build DockerImage') {
+
+        stage('Docker Push') {
             steps {
-                
-                sh 'docker build -t leila1312/stationski:latest -f DockerFile .'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: DOCKER_CREDS,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push $DOCKER_IMAGE
+                    '''
+                }
             }
         }
-        stage('Push to Docker Hub') {
+
+        stage('Deploy to Kubernetes') {
             steps {
-        script {
-            withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
-                sh 'docker push leila1312/stationski:latest'
+                withCredentials([
+                    file(credentialsId: 'my_kubernetes', variable: 'KUBECONFIG')
+                ]) {
+                    sh '''
+                        export KUBECONFIG=$KUBECONFIG
+                        kubectl apply -f k8s/mysql-deployment.yaml
+                        kubectl apply -f k8s/spring-deployment.yaml
+                        kubectl get pods
+                    '''
+                }
             }
         }
     }
-        
 }
-         stage(' Docker Compose') {
-            steps {
-                
-                sh 'docker-compose up -d'
-            }
-        }
-        stage('Jacoco Static Analysis') {
-            steps {
-                junit 'target/surefire-reports/**/*.xml'
-                jacoco()
-        }
-        }
-        stage ('MVN SONARQUBE' ) {
-            steps {
-               withCredentials([string(credentialsId: 'jenkins-sonar', variable: 'SONAR_TOKEN' )]) {
-               sh 'mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN'
-            }
-            }
-        }
-        stage('Deploy to Nexus') {
-            steps {
-                sh 'mvn deploy'
-            }
-        }
-        stage('Prometheus') {
-            steps {
-               sh 'docker start prometheus '
-            }
-        }
-        stage('Grafana') {
-            steps {
-               sh 'docker start grafana'
-            }
-        }
-        stage('Terraform') {
-            steps {
-                sh 'terraform init'  
-                sh 'terraform apply -auto-approve'
-            }
-        }
-    }
-       
-    post {
-    success {
-        emailext(
-            subject: "Build Success: ${currentBuild.fullDisplayName}",
-            body: "Le pipeline a réussi. Voir les détails du build ici: ${env.BUILD_URL}",
-            to: 'Leilabndhief@gmail.com'
-        )
-    }
-    failure {
-        emailext(
-            subject: "Build Failed: ${currentBuild.fullDisplayName}",
-            body: "Le pipeline a échoué. Voir les détails du build ici: ${env.BUILD_URL}",
-            to: 'Leilabndhief@gmail.com'
-        )
-    }
-    }
-    }
-    
